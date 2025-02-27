@@ -1,4 +1,4 @@
-import { BaseApiClient } from './base-client';
+import { BaseApiClient, ApiError } from './base-client';
 
 export interface DevToArticle {
   id: number;
@@ -53,38 +53,67 @@ export interface NormalizedDevToArticle {
  */
 export class DevToClient extends BaseApiClient {
   constructor() {
-    super('https://dev.to/api/');
+    super(
+      'https://dev.to/api/',
+      'devto',
+      {},
+      { maxRequests: 30, windowMs: 60 * 1000 } // DEV.to API has stricter rate limits
+    );
   }
 
   /**
    * Get the latest articles from DEV.to
    */
   async getLatestArticles(limit: number = 30): Promise<NormalizedDevToArticle[]> {
-    const articles = await this.get<DevToArticle[]>('articles', {
-      per_page: limit.toString(),
-    });
-    
-    return articles.map(this.normalizeArticle);
+    try {
+      const articles = await this.get<DevToArticle[]>('articles', {
+        per_page: limit.toString(),
+      });
+      
+      return articles.map(this.normalizeArticle);
+    } catch (error) {
+      console.error('Error fetching DEV.to latest articles:', error);
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(`Failed to fetch latest articles: ${error}`, 0, this.source, false);
+    }
   }
 
   /**
    * Get articles by tag from DEV.to
    */
   async getArticlesByTag(tag: string, limit: number = 30): Promise<NormalizedDevToArticle[]> {
-    const articles = await this.get<DevToArticle[]>('articles', {
-      tag,
-      per_page: limit.toString(),
-    });
-    
-    return articles.map(this.normalizeArticle);
+    try {
+      const articles = await this.get<DevToArticle[]>('articles', {
+        tag,
+        per_page: limit.toString(),
+      });
+      
+      return articles.map(this.normalizeArticle);
+    } catch (error) {
+      console.error(`Error fetching DEV.to articles with tag ${tag}:`, error);
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(`Failed to fetch articles by tag: ${error}`, 0, this.source, false);
+    }
   }
 
   /**
    * Get a specific article by ID
    */
   async getArticle(id: number): Promise<NormalizedDevToArticle> {
-    const article = await this.get<DevToArticle>(`articles/${id}`);
-    return this.normalizeArticle(article);
+    try {
+      const article = await this.get<DevToArticle>(`articles/${id}`);
+      return this.normalizeArticle(article);
+    } catch (error) {
+      console.error(`Error fetching DEV.to article with ID ${id}:`, error);
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(`Failed to fetch article: ${error}`, 0, this.source, false);
+    }
   }
 
   /**

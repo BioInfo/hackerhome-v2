@@ -1,4 +1,4 @@
-import { BaseApiClient } from './base-client';
+import { BaseApiClient, ApiError } from './base-client';
 
 export interface GitHubRepository {
   id: number;
@@ -53,14 +53,21 @@ export interface NormalizedGitHubRepository {
  */
 export class GitHubClient extends BaseApiClient {
   constructor() {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = {
+      'Accept': 'application/vnd.github.v3+json'
+    };
     
     // Add GitHub token if available
     if (process.env.GITHUB_API_KEY) {
       headers['Authorization'] = `token ${process.env.GITHUB_API_KEY}`;
     }
     
-    super('https://api.github.com/', headers);
+    super(
+      'https://api.github.com/',
+      'github',
+      headers,
+      { maxRequests: 60, windowMs: 60 * 60 * 1000 } // GitHub API allows 60 requests per hour for unauthenticated users
+    );
   }
 
   /**
@@ -71,42 +78,66 @@ export class GitHubClient extends BaseApiClient {
     since: 'daily' | 'weekly' | 'monthly' = 'daily',
     limit: number = 30
   ): Promise<NormalizedGitHubRepository[]> {
-    // GitHub doesn't have a direct trending API, so we use the search API
-    // with sort by stars and filter by creation date
-    const dateFilter = this.getDateFilterForTrending(since);
-    
-    const params: Record<string, string> = {
-      q: `created:>${dateFilter}${language ? ` language:${language}` : ''}`,
-      sort: 'stars',
-      order: 'desc',
-      per_page: limit.toString(),
-    };
-    
-    const response = await this.get<{
-      items: GitHubRepository[];
-    }>('search/repositories', params);
-    
-    return response.items.map(this.normalizeRepository);
+    try {
+      // GitHub doesn't have a direct trending API, so we use the search API
+      // with sort by stars and filter by creation date
+      const dateFilter = this.getDateFilterForTrending(since);
+      
+      const params: Record<string, string> = {
+        q: `created:>${dateFilter}${language ? ` language:${language}` : ''}`,
+        sort: 'stars',
+        order: 'desc',
+        per_page: limit.toString(),
+      };
+      
+      const response = await this.get<{
+        items: GitHubRepository[];
+      }>('search/repositories', params);
+      
+      return response.items.map(this.normalizeRepository);
+    } catch (error) {
+      console.error('Error fetching GitHub trending repositories:', error);
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(`Failed to fetch trending repositories: ${error}`, 0, this.source, false);
+    }
   }
 
   /**
    * Get a specific repository by owner and name
    */
   async getRepository(owner: string, repo: string): Promise<NormalizedGitHubRepository> {
-    const repository = await this.get<GitHubRepository>(`repos/${owner}/${repo}`);
-    return this.normalizeRepository(repository);
+    try {
+      const repository = await this.get<GitHubRepository>(`repos/${owner}/${repo}`);
+      return this.normalizeRepository(repository);
+    } catch (error) {
+      console.error(`Error fetching GitHub repository ${owner}/${repo}:`, error);
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(`Failed to fetch repository: ${error}`, 0, this.source, false);
+    }
   }
 
   /**
    * Get repositories for a specific user or organization
    */
   async getUserRepositories(username: string, limit: number = 30): Promise<NormalizedGitHubRepository[]> {
-    const repositories = await this.get<GitHubRepository[]>(`users/${username}/repos`, {
-      sort: 'updated',
-      per_page: limit.toString(),
-    });
-    
-    return repositories.map(this.normalizeRepository);
+    try {
+      const repositories = await this.get<GitHubRepository[]>(`users/${username}/repos`, {
+        sort: 'updated',
+        per_page: limit.toString(),
+      });
+      
+      return repositories.map(this.normalizeRepository);
+    } catch (error) {
+      console.error(`Error fetching GitHub repositories for user ${username}:`, error);
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(`Failed to fetch user repositories: ${error}`, 0, this.source, false);
+    }
   }
 
   /**
@@ -126,7 +157,7 @@ export class GitHubClient extends BaseApiClient {
       stars: repo.stargazers_count,
       forks: repo.forks_count,
       language: repo.language,
-      topics: repo.topics,
+      topics: repo.topics || [],
       source: 'github',
     };
   }

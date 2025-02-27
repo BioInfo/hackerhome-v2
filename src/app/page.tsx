@@ -1,13 +1,29 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { MainLayout } from "@/components/layout/MainLayout"
 import { useNews } from '@/lib/hooks'
 import { formatRelativeTime } from '@/lib/api'
+import { motion } from '@/components/animations/motion'
 
 export default function Home() {
-  const { news, isLoading, error } = useNews()
+  const { news, isLoading, error, sourceErrors, refreshNews, setRefreshInterval } = useNews()
   const [searchQuery, setSearchQuery] = useState('')
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false)
+
+  // Handle auto-refresh toggle
+  useEffect(() => {
+    if (autoRefreshEnabled) {
+      setRefreshInterval(5 * 60 * 1000) // 5 minutes
+    } else {
+      setRefreshInterval(null)
+    }
+    
+    return () => {
+      // Clean up on unmount
+      setRefreshInterval(null)
+    }
+  }, [autoRefreshEnabled, setRefreshInterval])
 
   const filteredNews = searchQuery 
     ? news.filter(item => 
@@ -17,11 +33,68 @@ export default function Home() {
       )
     : news
 
+  const handleRefresh = () => {
+    refreshNews()
+  }
+
+  const toggleAutoRefresh = () => {
+    setAutoRefreshEnabled(!autoRefreshEnabled)
+  }
+
   return (
     <MainLayout>
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-3xl font-bold">Latest Tech News</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold">Latest Tech News</h1>
+            <div className="flex items-center space-x-1">
+              <button
+                onClick={handleRefresh}
+                disabled={isLoading}
+                className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+                title="Refresh"
+              >
+                <svg 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  strokeWidth={1.5} 
+                  stroke="currentColor" 
+                  className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`}
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" 
+                  />
+                </svg>
+              </button>
+              <button
+                onClick={toggleAutoRefresh}
+                className={`rounded-md p-1.5 ${
+                  autoRefreshEnabled 
+                    ? 'text-primary' 
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                }`}
+                title={autoRefreshEnabled ? "Auto-refresh on (5 minutes)" : "Auto-refresh off"}
+              >
+                <svg 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  strokeWidth={1.5} 
+                  stroke="currentColor" 
+                  className="h-5 w-5"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" 
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
           <div className="relative">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -47,6 +120,37 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Source errors banner */}
+        {sourceErrors.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-500"
+          >
+            <div className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="mr-2 h-5 w-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <p className="text-sm font-medium">
+                Some sources couldn't be loaded ({sourceErrors.length})
+              </p>
+            </div>
+            <div className="mt-1 text-xs">
+              {sourceErrors.map((error, index) => (
+                <div key={error.id} className="mt-1">
+                  <span className="font-medium">
+                    {error.id === 'hackernews' ? 'Hacker News' : 
+                     error.id === 'devto' ? 'DEV.to' : 'GitHub'}:
+                  </span>{' '}
+                  {error.message.length > 100 
+                    ? `${error.message.substring(0, 100)}...` 
+                    : error.message}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
         {isLoading ? (
           <div className="space-y-4">
             {[...Array(5)].map((_, i) => (
@@ -57,22 +161,54 @@ export default function Home() {
             ))}
           </div>
         ) : error ? (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive"
+          >
             <h3 className="font-medium">Error loading news</h3>
             <p className="mt-1 text-sm">{error.message}</p>
-          </div>
+            <button 
+              onClick={handleRefresh}
+              className="mt-3 inline-flex items-center rounded-md bg-destructive/10 px-3 py-1.5 text-sm font-medium text-destructive hover:bg-destructive/20"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="mr-1.5 h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              Try Again
+            </button>
+          </motion.div>
         ) : filteredNews.length === 0 ? (
-          <div className="rounded-lg border border-border/40 bg-card p-8 text-center">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="rounded-lg border border-border/40 bg-card p-8 text-center"
+          >
             <h3 className="font-medium">No news found</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               {searchQuery ? "Try a different search term" : "Check back later for updates"}
             </p>
-          </div>
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="mt-4 inline-flex items-center rounded-md bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20"
+              >
+                Clear Search
+              </button>
+            )}
+          </motion.div>
         ) : (
-          <div className="grid gap-4">
-            {filteredNews.map((item) => (
-              <div
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="grid gap-4"
+          >
+            {filteredNews.map((item, index) => (
+              <motion.div
                 key={`${item.source}-${item.id}`}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05, duration: 0.2 }}
                 className="rounded-lg border border-border/40 bg-card p-4 shadow-sm transition-all hover:shadow-md"
               >
                 <div className="flex items-start justify-between">
@@ -175,9 +311,9 @@ export default function Home() {
                     </button>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         )}
       </div>
     </MainLayout>

@@ -1,50 +1,145 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useNews } from '@/lib/hooks'
 
 export function Sidebar() {
-  const { sources, updateSource } = useNews()
+  const { sources, sourceErrors, updateSource, refreshNews, isLoading, setRefreshInterval } = useNews()
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false)
+
+  // Set up auto-refresh when enabled/disabled
+  useEffect(() => {
+    if (autoRefreshEnabled) {
+      setRefreshInterval(5 * 60 * 1000) // 5 minutes
+    } else {
+      setRefreshInterval(null)
+    }
+  }, [autoRefreshEnabled, setRefreshInterval])
 
   const toggleSource = (id: string) => {
     const source = sources.find(s => s.id === id)
     if (source) {
+      console.log(`Sidebar: Toggling source ${id} from ${source.enabled} to ${!source.enabled}`);
       updateSource(id, !source.enabled)
     }
+  }
+
+  const handleRefresh = () => {
+    refreshNews()
+  }
+
+  const toggleAutoRefresh = () => {
+    setAutoRefreshEnabled(!autoRefreshEnabled)
+  }
+
+  // Find error for a specific source
+  const getSourceError = (sourceId: string) => {
+    return sourceErrors?.find(error => error.id === sourceId)
   }
 
   return (
     <aside className="hidden w-64 flex-shrink-0 border-r border-border/40 md:block">
       <div className="flex h-full flex-col">
-        <div className="p-4 font-medium">Sources</div>
+        <div className="flex items-center justify-between p-4">
+          <h3 className="font-medium">Sources</h3>
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="rounded-md p-1 text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground disabled:opacity-50"
+              title="Refresh"
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                strokeWidth={1.5} 
+                stroke="currentColor" 
+                className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`}
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" 
+                />
+              </svg>
+            </button>
+            <button
+              onClick={toggleAutoRefresh}
+              className={`rounded-md p-1 ${
+                autoRefreshEnabled 
+                  ? 'text-primary' 
+                  : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+              }`}
+              title={autoRefreshEnabled ? "Auto-refresh on (5 minutes)" : "Auto-refresh off"}
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                strokeWidth={1.5} 
+                stroke="currentColor" 
+                className="h-4 w-4"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" 
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
         <nav className="flex-1 overflow-auto p-2">
-          <ul className="space-y-1">
-            {sources.map((source) => (
-              <li key={source.id}>
-                <button
-                  onClick={() => toggleSource(source.id)}
-                  className={`flex w-full items-center rounded-md px-3 py-2 text-sm ${
-                    source.enabled
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
-                  }`}
-                >
-                  <span className="mr-2">
-                    {source.enabled ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
+          <ul className="space-y-2">
+            {sources.map((source) => {
+              const error = getSourceError(source.id);
+              return (
+                <li key={source.id}>
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => toggleSource(source.id)}
+                      className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-sm ${
+                        source.enabled
+                          ? 'bg-accent text-accent-foreground'
+                          : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+                      }`}
+                      aria-pressed={source.enabled}
+                    >
+                      <div className="flex items-center">
+                        <span className="mr-2">
+                          {source.enabled ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          )}
+                        </span>
+                        {source.name}
+                      </div>
+                      {error && (
+                        <span className="text-destructive" title={error.message}>
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                          </svg>
+                        </span>
+                      )}
+                    </button>
+                    {error && source.enabled && (
+                      <div className="ml-7 rounded-md bg-destructive/10 px-3 py-1 text-xs text-destructive">
+                        {error.message.length > 50 
+                          ? `${error.message.substring(0, 50)}...` 
+                          : error.message}
+                      </div>
                     )}
-                  </span>
-                  {source.name}
-                </button>
-              </li>
-            ))}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </nav>
         <div className="border-t border-border/40 p-4">

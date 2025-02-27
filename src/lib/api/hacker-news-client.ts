@@ -1,4 +1,4 @@
-import { BaseApiClient } from './base-client';
+import { BaseApiClient, ApiError } from './base-client';
 
 export interface HackerNewsItem {
   id: number;
@@ -39,7 +39,13 @@ export interface NormalizedHackerNewsItem {
  */
 export class HackerNewsClient extends BaseApiClient {
   constructor() {
-    super('https://hacker-news.firebaseio.com/v0/');
+    super(
+      'https://hacker-news.firebaseio.com/v0/',
+      'hackernews',
+      {},
+      { maxRequests: 100, windowMs: 60 * 1000 } // Hacker News API is quite permissive
+    );
+    
   }
 
   /**
@@ -48,14 +54,22 @@ export class HackerNewsClient extends BaseApiClient {
   async getTopStories(limit: number = 30): Promise<NormalizedHackerNewsItem[]> {
     const storyIds = await this.get<number[]>('topstories.json');
     const limitedIds = storyIds.slice(0, limit);
-    
-    const stories = await Promise.all(
-      limitedIds.map(id => this.getItem(id))
-    );
-    
-    return stories
-      .filter((story): story is HackerNewsItem => !!story && story.type === 'story')
-      .map(this.normalizeItem);
+
+    try {
+      const stories = await Promise.all(
+        limitedIds.map(id => this.getItem(id))
+      );
+      
+      return stories
+        .filter((story): story is HackerNewsItem => !!story && story.type === 'story')
+        .map(this.normalizeItem);
+    } catch (error) {
+      console.error('Error fetching Hacker News top stories:', error);
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(`Failed to fetch top stories: ${error}`, 0, this.source, false);
+    }
   }
 
   /**
@@ -64,14 +78,22 @@ export class HackerNewsClient extends BaseApiClient {
   async getNewStories(limit: number = 30): Promise<NormalizedHackerNewsItem[]> {
     const storyIds = await this.get<number[]>('newstories.json');
     const limitedIds = storyIds.slice(0, limit);
-    
-    const stories = await Promise.all(
-      limitedIds.map(id => this.getItem(id))
-    );
-    
-    return stories
-      .filter((story): story is HackerNewsItem => !!story && story.type === 'story')
-      .map(this.normalizeItem);
+
+    try {
+      const stories = await Promise.all(
+        limitedIds.map(id => this.getItem(id))
+      );
+      
+      return stories
+        .filter((story): story is HackerNewsItem => !!story && story.type === 'story')
+        .map(this.normalizeItem);
+    } catch (error) {
+      console.error('Error fetching Hacker News new stories:', error);
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(`Failed to fetch new stories: ${error}`, 0, this.source, false);
+    }
   }
 
   /**
